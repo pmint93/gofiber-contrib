@@ -88,7 +88,8 @@ func Middleware(opts ...Option) fiber.Handler {
 
 		requestMetricsAttrs := httpServerMetricAttributesFromRequest(c, cfg)
 
-		httpServerActiveRequests.Add(savedCtx, 1, metric.AddOption{}.applyAdd(metric.AddConfig{attrs: requestMetricsAttrs}))
+		requestMetric := attributesToMetricOptions(requestMetricsAttrs)
+		httpServerActiveRequests.Add(savedCtx, 1, requestMetric...)
 
 		responseMetricAttrs := make([]attribute.KeyValue, len(requestMetricsAttrs))
 		copy(responseMetricAttrs, requestMetricsAttrs)
@@ -137,10 +138,11 @@ func Middleware(opts ...Option) fiber.Handler {
 				responseMetricAttrs,
 				responseAttrs...)
 
-			httpServerActiveRequests.Add(savedCtx, -1, metric.AddOption{}.applyAdd(metric.AddConfig{attrs: requestMetricsAttrs}))
-			httpServerDuration.Record(savedCtx, float64(time.Since(start).Microseconds())/1000, responseMetricAttrs...)
-			httpServerRequestSize.Record(savedCtx, requestSize, responseMetricAttrs...)
-			httpServerResponseSize.Record(savedCtx, responseSize, responseMetricAttrs...)
+			responRecord := attributesToRecordOptions(responseMetricAttrs)
+			httpServerActiveRequests.Add(savedCtx, -1, requestMetric...)
+			httpServerDuration.Record(savedCtx, float64(time.Since(start).Microseconds())/1000, responRecord...)
+			httpServerRequestSize.Record(savedCtx, requestSize, responRecord...)
+			httpServerResponseSize.Record(savedCtx, responseSize, responRecord...)
 
 			c.SetUserContext(savedCtx)
 			cancel()
@@ -164,4 +166,22 @@ func Middleware(opts ...Option) fiber.Handler {
 // integration. Returns the route pathRaw
 func defaultSpanNameFormatter(ctx *fiber.Ctx) string {
 	return ctx.Route().Path
+}
+
+// convert addOption type
+func attributesToMetricOptions(attrs []attribute.KeyValue) []metric.AddOption {
+	options := make([]metric.AddOption, len(attrs))
+	for i, attr := range attrs {
+		options[i] = metric.WithAttributes(attr)
+	}
+	return options
+}
+
+// convert recordOption type
+func attributesToRecordOptions(attrs []attribute.KeyValue) []metric.RecordOption {
+	options := make([]metric.RecordOption, len(attrs))
+	for i, attr := range attrs {
+		options[i] = metric.WithAttributes(attr)
+	}
+	return options
 }
